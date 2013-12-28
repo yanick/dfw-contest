@@ -1,21 +1,14 @@
 #!/usr/bin/perl 
 
-use 5.10.0;
 
 use strict;
 use warnings;
 
-use Path::Iterator::Rule;
+use Deduper;
 
+my $dedup = Deduper->new( root_dir => shift );
 
-sub deduple {
-    my $iter = Path::Iterator::Rule->new->iter_fast( shift, {
-        follow_symlinks => 1,
-    });
-
-    while( my $file = $iter->() ) {
-    }
-}
+$dedup->print_dupes;
 
 
 
