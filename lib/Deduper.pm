@@ -110,6 +110,15 @@ sub next_dupe {
     return;
 }
 
+sub print_dupes {
+    my( $self, $separator ) = @_;
+    $separator ||= "\t";
+
+    while( my @x = $self->next_dupe ) {
+        say join $separator, @x;
+    }
+}
+
 sub all_dupes {
     my $self = shift;
 
