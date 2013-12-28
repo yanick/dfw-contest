@@ -1,7 +1,7 @@
 use strict;
 use warnings;
 
-use Test::More;                      # last test to print
+use Test::More;
 use Test::Deep qw/ deep_diag cmp_deeply /;
 
 use Deduper;
@@ -30,9 +30,4 @@ ok !@all_dupes, "no leftovers"
     or diag explain \@all_dupes;
 
 done_testing;
-
-
-
-
-
 
