@@ -24,6 +24,16 @@ option small_file => (
     documentation => 'minimal size for files to be hashed',
 );
 
+option chunk => (
+    isa => 'Int',
+    is => 'ro',
+    trigger => sub {
+        my $self = shift;
+        Deduper::File->chunk_size( $self->chunk );
+    },
+    documentation => 'size of the chunks to read when comparing',
+);
+
 option stats => (
     isa => 'Bool',
     is => 'ro',
@@ -44,7 +54,7 @@ option max_files => (
 
 has start_time => (
     is => 'ro',
-    isa => Int,
+    isa => 'Int',
     default => sub { 0 + time },
 );
 
@@ -205,7 +215,7 @@ sub run {
     $self->print_dupes;
 
     if( $self->stats ) {
-        say "time taken: ", time - $self->start_time, " seconds";
+        warn "time taken: ", time - $self->start_time, " seconds\n";
     }
 
 }
@@ -218,6 +228,12 @@ use Moose;
 use MooseX::ClassAttribute;
 
 class_has small_file => (
+    isa => 'Int',
+    is => 'rw',
+    default => 1024,
+);
+
+class_has chunk_size => (
     isa => 'Int',
     is => 'rw',
     default => 1024,
@@ -281,10 +297,12 @@ sub same_content {
     open my $this, '<', $self->path;
     open my $that, '<', $other->path;
 
+    my $size = $self->chunk_size;
+
     # we know they are are same size
     my( $x, $y );
-    while ( my $chunk = read $this, $x, 1024 ) {
-        read $that, $y, 1024;
+    while ( my $chunk = read $this, $x, $size ) {
+        read $that, $y, $size;
         return unless $x eq $y;
     }
 
