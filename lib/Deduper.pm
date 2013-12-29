@@ -34,6 +34,16 @@ option chunk => (
     documentation => 'size of the chunks to read when comparing',
 );
 
+option hash_size => (
+    isa => 'Int',
+    is => 'ro',
+    trigger => sub {
+        my $self = shift;
+        Deduper::File->hash_size( $self->hash_size );
+    },
+    documentation => 'size of the file hash',
+);
+
 option stats => (
     isa => 'Bool',
     is => 'ro',
@@ -239,6 +249,12 @@ class_has chunk_size => (
     default => 1024,
 );
 
+class_has hash_size => (
+    isa => 'Int',
+    is => 'rw',
+    default => 1024,
+);
+
 has "path" => (
     is => 'ro',
     required => 1,
@@ -280,16 +296,22 @@ has hash => (
     default => sub {
         my $self = shift;
 
+        my $size = $self->size;
+
         # if the file is small, don't bother
         return '' if $self->size <= $self->small_file;
 
         open my $fh, '<', $self->path;
         my $hash;
-        read $fh, $hash, 1024;
+        read $fh, $hash, $self->hash_size, $self->hash_position;
 
         return $hash;
     },
 );
+
+sub hash_position {
+    return $_[0]->size / 2;
+}
 
 sub same_content {
     my( $self, $other ) = @_;
