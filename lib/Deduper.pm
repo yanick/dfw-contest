@@ -73,7 +73,7 @@ has file_iterator => (
     lazy => 1,
     default => sub {
         my $self = shift;
-        return Path::Iterator::Rule->new->iter_fast( $self->root_dir, {
+        return Path::Iterator::Rule->new->file->iter_fast( $self->root_dir, {
             follow_symlinks => 0,
             sorted => 1,
         });
@@ -286,6 +286,7 @@ has "path" => (
 has "inode" => (
     is => 'ro',
     lazy => 1,
+    predicate => 'has_inode',
     default => sub {
         my $self = shift;
         return( (stat $self->path)[1] );
@@ -295,6 +296,7 @@ has "inode" => (
 has copies => (
     is => 'ro',
     lazy => 1,
+    predicate => 'has_copies',
     default => sub {
         my $self = shift;
         return( (stat $self->path)[3]-1 );
@@ -317,8 +319,7 @@ has digest => (
     default => sub {
         my $self = shift;
 
-        my $fh = $self->fh;
-        seek $fh, 0, 0;
+        open my $fh, '<', $self->path;
         my $ctx = Digest::MD5->new;
         $ctx->addfile($fh);
         return $ctx->digest;
@@ -335,7 +336,7 @@ has hash => (
     default => sub {
         my $self = shift;
 
-        my $fh = $self->fh;
+        open my $fh, '<', $self->path;
         read $fh, my $hash, $self->hash_size;
         return $hash;
     },
@@ -348,40 +349,12 @@ has end_hash => (
     default => sub {
         my $self = shift;
 
-        my $fh = $self->fh;
+        open my $fh, '<', $self->path;
         seek $fh, -$self->hash_size, 2;
         read $fh, my $hash, $self->hash_size;
         return $hash;
     },
 );
-
-has fh => (
-    is => 'rw',
-    clearer => 'clear_fh',
-    lazy => 1,
-    default => sub {
-        open my $fh, '<', $_[0]->path;
-        return $fh;
-    },
-);
-
-sub same_content {
-    my( $self, $other ) = @_;
-
-    open my $this, '<', $self->path;
-    open my $that, '<', $other->path;
-
-    my $size = $self->chunk_size;
-
-    # we know they are are same size
-    my( $x, $y );
-    while ( read $this, $x, $size ) {
-        read $that, $y, $size;
-        return unless $x eq $y;
-    }
-
-    return 1;
-}
 
 sub is_dupe {
     my( $self, $other ) = @_;
@@ -393,10 +366,6 @@ sub is_dupe {
         && $self->end_hash eq $other->end_hash
         && $self->digest eq $other->digest;
 }
-
-after is_dupe => sub {
-    $_[0]->clear_fh;
-};
 
 __PACKAGE__->meta->make_immutable;
 
