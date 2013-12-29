@@ -14,6 +14,28 @@ parameter root_dir => (
     documentation => 'path to dedupe',
 );
 
+option small_file => (
+    isa => 'Int',
+    is => 'ro',
+    trigger => sub {
+        my $self = shift;
+        Deduper::File->small_file( $self->small_file );
+    },
+    documentation => 'minimal size for files to be hashed',
+);
+
+option max_files => (
+    traits => [ 'Counter' ],
+    isa => 'Int',
+    is => 'ro',
+    predicate => 'has_max_files',
+    default => 0,
+    documentation => 'max number of files to scan (for testing)',
+    handles => {
+        dec_files_to_scan => 'dec',
+    },
+);
+
 has file_iterator => (
     is => 'ro',
     lazy => 1,
@@ -42,6 +64,24 @@ has reported_inodes => (
     is => 'ro',
     default => sub { {} },
 );
+
+sub BUILD {
+    my $self = shift;
+
+    $self->meta->make_mutable;
+    
+    if( $self->max_files > 0 ) {
+        $self->meta->add_after_method_modifier(
+            next_file => sub {
+                my $self = shift;
+                $self->dec_files_to_scan;
+                $self->finished(1) unless $self->max_files > 0;
+            }
+        );
+    }
+
+    $self->meta->make_immutable;
+}
 
 sub add_file {
     my( $self, $file ) = @_;
@@ -94,20 +134,30 @@ sub seen_inodes {
     return 1;
 }
 
-sub next_dupe {
+sub next_file {
     my $self = shift;
 
     return if $self->finished;
     
     while( my $file = $self->file_iterator->() ) {
         next unless -f $file;
-        $file = Deduper::File->new( path => $file );
+
+        return Deduper::File->new( path => $file );
+    }
+
+    $self->finished(1);
+    return;
+}
+
+sub next_dupe {
+    my $self = shift;
+
+    while( my $file = $self->next_file ) {
         my $orig = $self->is_dupe($file) or next;
         next if $self->seen_inodes($file->inode);
         return $orig->path => $file->path;
     }
 
-    $self->finished(1);
     return;
 }
 
@@ -148,6 +198,13 @@ __PACKAGE__->meta->make_immutable;
 package Deduper::File;
 
 use Moose;
+use MooseX::ClassAttribute;
+
+class_has small_file => (
+    isa => 'Int',
+    is => 'rw',
+    default => 1024,
+);
 
 has "path" => (
     is => 'ro',
@@ -191,7 +248,7 @@ has hash => (
         my $self = shift;
 
         # if the file is small, don't bother
-        return '' if $self->size < 3 * 1024;
+        return '' if $self->size <= $self->small_file;
 
         open my $fh, '<', $self->path;
         my $hash;
