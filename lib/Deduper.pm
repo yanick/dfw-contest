@@ -226,6 +226,12 @@ sub run {
 
     if( $self->stats ) {
         warn "time taken: ", time - $self->start_time, " seconds\n";
+
+        for my $size ( sort { $a <=> $b } keys %{ $self->files } ) {
+            warn "size: ", $size, " nbr files ", 0 + @{ $self->files->{$size}
+            }, "\n";
+        }
+
     }
 
 }
@@ -302,16 +308,10 @@ has hash => (
         return '' if $self->size <= $self->small_file;
 
         open my $fh, '<', $self->path;
-        my $hash;
-        read $fh, $hash, $self->hash_size, $self->hash_position;
-
+        read $fh, my $hash, $self->hash_size;
         return $hash;
     },
 );
-
-sub hash_position {
-    return $_[0]->size / 2;
-}
 
 sub same_content {
     my( $self, $other ) = @_;
@@ -323,7 +323,7 @@ sub same_content {
 
     # we know they are are same size
     my( $x, $y );
-    while ( my $chunk = read $this, $x, $size ) {
+    while ( read $this, $x, $size ) {
         read $that, $y, $size;
         return unless $x eq $y;
     }
@@ -335,9 +335,6 @@ sub is_dupe {
     my( $self, $other ) = @_;
 
     # if we are here, it's assumed the sizes are the same
-    
-    # special case: empty files are all the same
-    return 1 unless $self->size;
     
     # different hashes?
     return unless $self->hash eq $other->hash;
