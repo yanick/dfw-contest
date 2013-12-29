@@ -131,6 +131,11 @@ sub find_orig {
     my $candidates = $self->files->{$file->size}
         or return;
 
+    # first check if any share the same inode
+    for my $c ( @$candidates ) {
+        return $c if $c->inode == $file->inode;
+    }
+
     for my $c ( @$candidates ) {
         return $c if $c->is_dupe( $file );
     }
@@ -227,10 +232,19 @@ sub run {
     if( $self->stats ) {
         warn "time taken: ", time - $self->start_time, " seconds\n";
 
-        for my $size ( sort { $a <=> $b } keys %{ $self->files } ) {
-            warn "size: ", $size, " nbr files ", 0 + @{ $self->files->{$size}
-            }, "\n";
+        my $nbr_files;
+        my $nbr_hash;
+        my $nbr_md5;
+
+        for my $f ( values %{ $self->files } ) {
+            $nbr_files += @$f;
+            for my $j ( @$f ) {
+                $nbr_hash++ if $j->has_hash;
+                $nbr_md5++ if $j->has_md5;
+            }
         }
+
+        warn join " ", $nbr_files, $nbr_hash, $nbr_md5, "\n";
 
     }
 
@@ -297,6 +311,7 @@ has "size" => (
 has digest => (
     is => 'ro',
     lazy => 1,
+    predicate => 'has_md5',
     default => sub {
         my $self = shift;
 
@@ -313,6 +328,7 @@ has digest => (
 has hash => (
     is => 'ro',
     lazy => 1,
+    predicate => 'has_hash',
     default => sub {
         my $self = shift;
 
