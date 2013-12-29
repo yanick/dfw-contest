@@ -1,5 +1,6 @@
 requires 'Path::Iterator::Rule';
-requires 'Moo';
+requires 'Moose';
+requires 'MooseX::App::Simple';
 
 on test => sub {
 	requires 'Test::Deep';

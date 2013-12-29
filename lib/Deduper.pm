@@ -6,11 +6,12 @@ use strict;
 use warnings;
 
 use Path::Iterator::Rule;
-use Moo;
+use MooseX::App::Simple;
 
-has root_dir => (
+parameter root_dir => (
     is => 'ro',
     required => 1,
+    documentation => 'path to dedupe',
 );
 
 has file_iterator => (
@@ -136,9 +137,17 @@ sub all_dupes {
     return sort { $a->[0] cmp $b->[0] } @dupes;
 }
 
+sub run {
+    my $self = shift;
+
+    $self->print_dupes;
+}
+
+__PACKAGE__->meta->make_immutable;
+
 package Deduper::File;
 
-use Moo;
+use Moose;
 
 has "path" => (
     is => 'ro',
@@ -222,6 +231,8 @@ sub is_dupe {
     # go full metal diff on them
     return $self->same_content( $other );
 }
+
+__PACKAGE__->meta->make_immutable;
 
 1;
 
