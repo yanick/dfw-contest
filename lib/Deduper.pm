@@ -242,6 +242,7 @@ package Deduper::File;
 
 use Moose;
 use MooseX::ClassAttribute;
+use Digest::MD5;
 
 class_has small_file => (
     isa => 'Int',
@@ -293,6 +294,19 @@ has "size" => (
     },
 );
 
+has digest => (
+    is => 'ro',
+    lazy => 1,
+    default => sub {
+        my $self = shift;
+
+        open my $fh, '<', $self->path;
+        my $ctx = Digest::MD5->new;
+        $ctx->addfile($fh);
+        return $ctx->digest;
+    },
+);
+
 # the "hash" is simply a 1024 bit segment in the middle
 # of the file. Hopefully the middle part will deal with 
 # similar headers and footers
@@ -340,7 +354,7 @@ sub is_dupe {
     return unless $self->hash eq $other->hash;
 
     # go full metal diff on them
-    return $self->same_content( $other );
+    return $self->digest eq $other->digest;
 }
 
 __PACKAGE__->meta->make_immutable;
