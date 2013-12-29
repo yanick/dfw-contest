@@ -234,17 +234,19 @@ sub run {
 
         my $nbr_files;
         my $nbr_hash;
+        my $nbr_end_hash;
         my $nbr_md5;
 
         for my $f ( values %{ $self->files } ) {
             $nbr_files += @$f;
             for my $j ( @$f ) {
                 $nbr_hash++ if $j->has_hash;
+                $nbr_end_hash++ if $j->has_end_hash;
                 $nbr_md5++ if $j->has_md5;
             }
         }
 
-        warn join " ", $nbr_files, $nbr_hash, $nbr_md5, "\n";
+        warn join " ", $nbr_files, $nbr_hash, $nbr_end_hash, $nbr_md5, "\n";
 
     }
 
@@ -315,7 +317,8 @@ has digest => (
     default => sub {
         my $self = shift;
 
-        open my $fh, '<', $self->path;
+        my $fh = $self->fh;
+        seek $fh, 0, 0;
         my $ctx = Digest::MD5->new;
         $ctx->addfile($fh);
         return $ctx->digest;
@@ -332,14 +335,33 @@ has hash => (
     default => sub {
         my $self = shift;
 
-        my $size = $self->size;
-
-        # if the file is small, don't bother
-        return '' if $self->size <= $self->small_file;
-
-        open my $fh, '<', $self->path;
+        my $fh = $self->fh;
         read $fh, my $hash, $self->hash_size;
         return $hash;
+    },
+);
+
+has end_hash => (
+    is => 'ro',
+    lazy => 1,
+    predicate => 'has_end_hash',
+    default => sub {
+        my $self = shift;
+
+        my $fh = $self->fh;
+        seek $fh, -$self->hash_size, 2;
+        read $fh, my $hash, $self->hash_size;
+        return $hash;
+    },
+);
+
+has fh => (
+    is => 'rw',
+    clearer => 'clear_fh',
+    lazy => 1,
+    default => sub {
+        open my $fh, '<', $_[0]->path;
+        return $fh;
     },
 );
 
@@ -367,11 +389,14 @@ sub is_dupe {
     # if we are here, it's assumed the sizes are the same
     
     # different hashes?
-    return unless $self->hash eq $other->hash;
-
-    # go full metal diff on them
-    return $self->digest eq $other->digest;
+    return $self->hash eq $other->hash
+        && $self->end_hash eq $other->end_hash
+        && $self->digest eq $other->digest;
 }
+
+after is_dupe => sub {
+    $_[0]->clear_fh;
+};
 
 __PACKAGE__->meta->make_immutable;
 
