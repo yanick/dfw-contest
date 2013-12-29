@@ -24,6 +24,12 @@ option small_file => (
     documentation => 'minimal size for files to be hashed',
 );
 
+option stats => (
+    isa => 'Bool',
+    is => 'ro',
+    documentation => 'report statistics',
+);
+
 option max_files => (
     traits => [ 'Counter' ],
     isa => 'Int',
@@ -34,6 +40,12 @@ option max_files => (
     handles => {
         dec_files_to_scan => 'dec',
     },
+);
+
+has start_time => (
+    is => 'ro',
+    isa => Int,
+    default => sub { 0 + time },
 );
 
 has file_iterator => (
@@ -191,6 +203,11 @@ sub run {
     my $self = shift;
 
     $self->print_dupes;
+
+    if( $self->stats ) {
+        say "time taken: ", time - $self->start_time, " seconds";
+    }
+
 }
 
 __PACKAGE__->meta->make_immutable;
