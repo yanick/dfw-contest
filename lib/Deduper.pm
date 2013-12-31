@@ -224,10 +224,14 @@ sub all_dupes {
     my @dupes;
     while( my( $orig, $dupes ) = each %dupes ) {
         my %seen_inode;
-        push @dupes, [ grep { not $seen_inode{ $_->inode }++ } uniq sort@$dupes ];
+        push @dupes, [ grep { not $seen_inode{ $_->inode }++ } uniq sort {
+            $a->path cmp $b->path }  @$dupes ];
     }
 
-    return sort { $a->[0] cmp $b->[0] } @dupes;
+    # filter out the dupes that are just hard links
+    @dupes = grep { @$_ > 1 } @dupes;
+
+    return sort { $a->[0]->path cmp $b->[0]->path } @dupes;
 }
 
 sub run {
