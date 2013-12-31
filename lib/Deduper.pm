@@ -6,7 +6,10 @@ use strict;
 use warnings;
 
 use Path::Iterator::Rule;
+use List::MoreUtils qw/ uniq /;
+
 use MooseX::App::Simple;
+
 
 parameter root_dir => (
     is => 'ro',
@@ -75,7 +78,7 @@ has file_iterator => (
         my $self = shift;
         return Path::Iterator::Rule->new->file->iter_fast( $self->root_dir, {
             follow_symlinks => 0,
-            sorted => 1,
+            sorted => 0,
         });
     },
 );
@@ -132,12 +135,14 @@ sub find_orig {
         or return;
 
     # first check if any share the same inode
-    for my $c ( @$candidates ) {
-        return $c if $c->inode == $file->inode;
+    my $inode = $file->inode;
+    for ( @$candidates ) {
+        return $_ if $_->inode == $inode;
     }
 
-    for my $c ( @$candidates ) {
-        return $c if $c->is_dupe( $file );
+    # then check if dupes
+    for ( @$candidates ) {
+        return $_ if $_->is_dupe($file);
     }
 
     return;
@@ -146,9 +151,7 @@ sub find_orig {
 sub is_dupe {
     my( $self, $file ) = @_;
 
-    if ( my $orig = $self->find_orig( $file ) ) {
-        return $orig;
-    }
+    return $_ for $self->find_orig($file);
 
     $self->add_file($file);
 
@@ -177,8 +180,6 @@ sub next_file {
     return if $self->finished;
     
     while( my $file = $self->file_iterator->() ) {
-        next unless -f $file;
-
         return Deduper::File->new( path => $file );
     }
 
@@ -189,12 +190,16 @@ sub next_file {
 sub next_dupe {
     my $self = shift;
 
-    while( my $file = $self->next_file ) {
+    return if $self->finished;
+
+    while( my $file = $self->file_iterator->() ) {
+        $file = Deduper::File->new( path => $file );
         my $orig = $self->is_dupe($file) or next;
-        next if $self->seen_inodes($file->inode);
-        return $orig->path => $file->path;
+        # next if $self->seen_inodes($file->inode);
+        return $orig => $file;
     }
 
+    $self->finished(1);
     return;
 }
 
@@ -212,13 +217,14 @@ sub all_dupes {
 
     my %dupes;
     while ( my ( $orig, $dupe ) = $self->next_dupe ) {
-        push @{ $dupes{$orig} }, $dupe;
+        push @{ $dupes{$orig->path} }, $orig, $dupe;
     }
 
     # we want them all nice and sorted
     my @dupes;
     while( my( $orig, $dupes ) = each %dupes ) {
-        push @dupes, [ sort $orig, @$dupes ];
+        my %seen_inode;
+        push @dupes, [ grep { not $seen_inode{ $_->inode }++ } uniq sort@$dupes ];
     }
 
     return sort { $a->[0] cmp $b->[0] } @dupes;
@@ -227,10 +233,14 @@ sub all_dupes {
 sub run {
     my $self = shift;
 
-    $self->print_dupes;
+    # $self->print_dupes;
+    for my $entry ( $self->all_dupes ) {
+        say join "\t", map { $_->path } @$entry;
+    }
 
     if( $self->stats ) {
-        warn "time taken: ", time - $self->start_time, " seconds\n";
+        say '-' x 35;
+        say "time taken: ", time - $self->start_time, " seconds";
 
         my $nbr_files;
         my $nbr_hash;
@@ -246,7 +256,7 @@ sub run {
             }
         }
 
-        warn join " ", $nbr_files, $nbr_hash, $nbr_end_hash, $nbr_md5, "\n";
+        say join " ", $nbr_files, $nbr_hash, $nbr_end_hash, $nbr_md5;
 
     }
 
@@ -320,9 +330,7 @@ has digest => (
         my $self = shift;
 
         open my $fh, '<', $self->path;
-        my $ctx = Digest::MD5->new;
-        $ctx->addfile($fh);
-        return $ctx->digest;
+        return Digest::MD5->new->addfile($fh)->digest;
     },
 );
 
