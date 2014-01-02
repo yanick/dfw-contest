@@ -173,8 +173,8 @@ sub find_orig {
     if( ref $candidates eq 'HASH' ) {
         $candidates = $candidates->{$file->hash};
     }
-    elsif ( $candidates->[0]->hash eq $file->hash ) {
-        return $candidates->[0];
+    elsif ( $candidates->[0]->hash ne $file->hash ) {
+        return;
     }
 
     # first check if any share the same inode
