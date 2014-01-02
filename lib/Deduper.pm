@@ -98,8 +98,8 @@ sub all_files {
     
     my @files;
     for my $v ( values %{ $self->files } ) {
-        if ( ref $v eq 'ARRAY' ) {
-            push @files, @$v;
+        if ( ref $v eq 'Deduper::File' ) {
+            push @files, $v;
         }
         else {
             push @files, map { @$_ } values %$v;
@@ -140,7 +140,7 @@ sub add_file {
 
     if( my $ref = $self->files->{$file->size} ) {
         if ( ref $ref  eq 'Deduper::File' ) {
-            $ref = $self->files->{$file->size} = { $ref->[0]->hash => $ref };
+            $ref = $self->files->{$file->size} = { $ref->hash => [ $ref ] };
         }
         push @{$ref->{$file->hash}}, $file;
     }
