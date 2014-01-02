@@ -120,20 +120,17 @@ sub BUILD {
     my $self = shift;
 
     $self->meta->make_mutable;
-    
-    if( $self->max_files > 0 ) {
-        $self->meta->add_after_method_modifier(
-            next_file => sub {
-                my $self = shift;
-                $self->dec_files_to_scan;
-                $self->finished(1) unless $self->max_files > 0;
-            }
-        );
-    }
 
-    if( $self->stats ) {
-        $self->meta->add_after_method_modifier( run => \&print_stats );
-    }
+    $self->meta->add_after_method_modifier(
+        next_file => sub {
+            my $self = shift;
+            $self->dec_files_to_scan;
+            $self->finished(1) unless $self->max_files > 0;
+        }
+    ) if $self->max_files;
+
+    $self->meta->add_after_method_modifier( run => \&print_stats )
+        if $self->stats;
 
     $self->meta->make_immutable;
 }
@@ -142,21 +139,15 @@ sub add_file {
     my( $self, $file ) = @_;
 
     if( my $ref = $self->files->{$file->size} ) {
-        if ( ref $ref  eq 'ARRAY' ) {
-            $self->files->{$file->size} = {};
-            for( @$ref, $file ) {
-                push @{$self->files->{$file->size}{$file->hash}}, $file;
-            }
+        if ( ref $ref  eq 'Deduper::File' ) {
+            $ref = $self->files->{$file->size} = { $ref->[0]->hash => $ref };
         }
-        else {
-            push @{$ref->{$file->hash}}, $file;
-        }
+        push @{$ref->{$file->hash}}, $file;
     }
     else {
         # nothing yet, just push the sucker in
-        $self->files->{$file->size} = [ $file ];
+        $self->files->{$file->size} = $file;
     }
-
 
     if( my $nbr = $file->copies ) {
         $self->reported_inodes->{$file->inode} = $nbr;
@@ -170,12 +161,12 @@ sub find_orig {
     my $candidates = $self->files->{$file->size}
         or return;
 
-    if( ref $candidates eq 'HASH' ) {
-        $candidates = $candidates->{$file->hash};
-    }
-    elsif ( $candidates->[0]->hash ne $file->hash ) {
+    if( ref $candidates eq 'Deduper::File'
+            and $candidates->hash ne $file->hash ) {
         return;
     }
+
+    $candidates = $candidates->{$file->hash};
 
     # first check if any share the same inode
     my $inode = $file->inode;
@@ -201,22 +192,6 @@ sub is_dupe {
     return;
 }
 
-sub seen_inodes {
-    my( $self, $inode ) = @_;
-
-    return unless keys %{ $self->reported_inodes };
-
-    return unless $self->reported_inodes->{$inode}--;
-
-    # no more copies to check? remove totally
-    # should not be a big deal, but it's less
-    # memory consumed
-    delete $self->reported_inodes->{$inode} 
-        unless $self->reported_inodes->{$inode};
-
-    return 1;
-}
-
 sub next_file {
     my $self = shift;
 
@@ -238,7 +213,6 @@ sub next_dupe {
     while( my $file = $self->file_iterator->() ) {
         $file = Deduper::File->new( path => $file );
         my $orig = $self->is_dupe($file) or next;
-        # next if $self->seen_inodes($file->inode);
         return $orig => $file;
     }
 
