@@ -272,7 +272,7 @@ package Deduper::File;
 
 use Moose;
 use MooseX::ClassAttribute;
-use Digest::MD5;
+use Digest::xxHash;
 
 class_has small_file => (
     isa => 'Int',
@@ -334,7 +334,12 @@ has digest => (
         my $self = shift;
 
         open my $fh, '<', $self->path;
-        return Digest::MD5->new->addfile($fh)->digest;
+        my $digest = Digest::xxHash->new(613);
+        my $chunk;
+        while( read $fh, $chunk, 1024 * 1024 ) {
+            $digest->add($chunk);
+        }
+        return $digest->digest;
     },
 );
 
