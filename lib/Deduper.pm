@@ -333,10 +333,10 @@ has digest => (
     default => sub {
         my $self = shift;
 
-        open my $fh, '<', $self->path;
+        sysopen my $fh, $self->path, 0;
         my $digest = Digest::xxHash->new(613);
         my $chunk;
-        while( read $fh, $chunk, 1024 * 1024 ) {
+        while( sysread $fh, $chunk, 1024 * 1024 ) {
             $digest->add($chunk);
         }
         return $digest->digest;
@@ -353,8 +353,8 @@ has hash => (
     default => sub {
         my $self = shift;
 
-        open my $fh, '<', $self->path;
-        read $fh, my $hash, $self->hash_size;
+        sysopen my $fh, $self->path, 0;
+        sysread $fh, my $hash, $self->hash_size;
         return $hash;
     },
 );
@@ -366,9 +366,9 @@ has end_hash => (
     default => sub {
         my $self = shift;
 
-        open my $fh, '<', $self->path;
-        seek $fh, -$self->hash_size, 2;
-        read $fh, my $hash, $self->hash_size;
+        sysopen my $fh, $self->path, 0;
+        sysseek $fh, -$self->hash_size, 2;
+        sysread $fh, my $hash, $self->hash_size;
         return $hash;
     },
 );
