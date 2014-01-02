@@ -243,7 +243,7 @@ sub run {
     }
 
     if( $self->stats ) {
-        say '-' x 35;
+        say '-' x 30;
         say "time taken: ", time - $self->start_time, " seconds";
 
         my $nbr_files;
