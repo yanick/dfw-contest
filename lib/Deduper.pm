@@ -121,7 +121,7 @@ sub BUILD {
 sub add_file {
     my( $self, $file ) = @_;
 
-    push @{ $self->files->{$file->size} }, $file;
+    push @{ $self->files->{$file->size}{$file->hash} }, $file;
     if( my $nbr = $file->copies ) {
         $self->reported_inodes->{$file->inode} = $nbr;
     }
@@ -131,7 +131,7 @@ sub find_orig {
     my( $self, $file ) = @_;
 
     # do we have any file of the same size?
-    my $candidates = $self->files->{$file->size}
+    my $candidates = $self->files->{$file->size}{$file->hash}
         or return;
 
     # first check if any share the same inode
@@ -251,7 +251,7 @@ sub run {
         my $nbr_end_hash;
         my $nbr_md5;
 
-        for my $f ( values %{ $self->files } ) {
+        for my $f ( map { values %$_ } values %{ $self->files } ) {
             $nbr_files += @$f;
             for my $j ( @$f ) {
                 $nbr_hash++ if $j->has_hash;
@@ -377,10 +377,11 @@ sub is_dupe {
     my( $self, $other ) = @_;
 
     # if we are here, it's assumed the sizes are the same
+    # and the beginning hashes are the same
     
     # different hashes?
-    return $self->hash eq $other->hash
-        && $self->end_hash eq $other->end_hash
+    return 
+           $self->end_hash eq $other->end_hash
         && $self->digest eq $other->digest;
 }
 
