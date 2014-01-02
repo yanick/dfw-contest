@@ -93,6 +93,22 @@ has "files" => (
     default => sub { {} },
 );
 
+sub all_files {
+    my $self = shift;
+    
+    my @files;
+    for my $v ( values %{ $self->files } ) {
+        if ( ref $v eq 'ARRAY' ) {
+            push @files, @$v;
+        }
+        else {
+            push @files, map { @$_ } values %$v;
+        }
+    }
+
+    return @files;
+}
+
 # to take care of the cases where a, b, c and d are the same,
 # and a,b and c, d  are different sets of hard-links.
 has reported_inodes => (
@@ -115,13 +131,33 @@ sub BUILD {
         );
     }
 
+    if( $self->stats ) {
+        $self->meta->add_after_method_modifier( run => \&print_stats );
+    }
+
     $self->meta->make_immutable;
 }
 
 sub add_file {
     my( $self, $file ) = @_;
 
-    push @{ $self->files->{$file->size}{$file->hash} }, $file;
+    if( my $ref = $self->files->{$file->size} ) {
+        if ( ref $ref  eq 'ARRAY' ) {
+            $self->files->{$file->size} = {};
+            for( @$ref, $file ) {
+                push @{$self->files->{$file->size}{$file->hash}}, $file;
+            }
+        }
+        else {
+            push @{$ref->{$file->hash}}, $file;
+        }
+    }
+    else {
+        # nothing yet, just push the sucker in
+        $self->files->{$file->size} = [ $file ];
+    }
+
+
     if( my $nbr = $file->copies ) {
         $self->reported_inodes->{$file->inode} = $nbr;
     }
@@ -131,8 +167,15 @@ sub find_orig {
     my( $self, $file ) = @_;
 
     # do we have any file of the same size?
-    my $candidates = $self->files->{$file->size}{$file->hash}
+    my $candidates = $self->files->{$file->size}
         or return;
+
+    if( ref $candidates eq 'HASH' ) {
+        $candidates = $candidates->{$file->hash};
+    }
+    elsif ( $candidates->[0]->hash eq $file->hash ) {
+        return $candidates->[0];
+    }
 
     # first check if any share the same inode
     my $inode = $file->inode;
@@ -241,29 +284,27 @@ sub run {
     for my $entry ( $self->all_dupes ) {
         say join "\t", map { $_->path } @$entry;
     }
+}
 
-    if( $self->stats ) {
-        say '-' x 30;
-        say "time taken: ", time - $self->start_time, " seconds";
+sub print_stats {
+    my $self = shift;
 
-        my $nbr_files;
-        my $nbr_hash;
-        my $nbr_end_hash;
-        my $nbr_md5;
+    say '-' x 30;
+    say "time taken: ", time - $self->start_time, " seconds";
 
-        for my $f ( map { values %$_ } values %{ $self->files } ) {
-            $nbr_files += @$f;
-            for my $j ( @$f ) {
-                $nbr_hash++ if $j->has_hash;
-                $nbr_end_hash++ if $j->has_end_hash;
-                $nbr_md5++ if $j->has_md5;
-            }
-        }
+    my $nbr_files;
+    my $nbr_hash;
+    my $nbr_end_hash;
+    my $nbr_md5;
 
-        say join " ", $nbr_files, $nbr_hash, $nbr_end_hash, $nbr_md5;
-
+    for my $f ( $self->all_files ) {
+        $nbr_files++;
+        $nbr_hash++ if $f->has_hash;
+        $nbr_end_hash++ if $f->has_end_hash;
+        $nbr_md5++ if $f->has_md5;
     }
 
+    say join " ", $nbr_files, $nbr_hash, $nbr_end_hash, $nbr_md5;
 }
 
 __PACKAGE__->meta->make_immutable;
