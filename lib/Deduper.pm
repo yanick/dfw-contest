@@ -161,21 +161,24 @@ sub find_orig {
     my $candidates = $self->files->{$file->size}
         or return;
 
-    if( ref $candidates eq 'Deduper::File'
-            and $candidates->hash ne $file->hash ) {
-        return;
-    }
+    my @c;
 
-    $candidates = $candidates->{$file->hash};
+    if( ref $candidates eq 'Deduper::File' ) {
+	return if $candidates->hash ne $file->hash;
+	@c = ( $candidates );
+    }
+    else {
+	 @c = @{ $candidates->{$file->hash} || return };
+    }
 
     # first check if any share the same inode
     my $inode = $file->inode;
-    for ( @$candidates ) {
+    for ( @c ) {
         return $_ if $_->inode == $inode;
     }
 
     # then check if dupes
-    for ( @$candidates ) {
+    for ( @c ) {
         return $_ if $_->is_dupe($file);
     }
 
