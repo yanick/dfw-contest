@@ -10,6 +10,7 @@ use List::MoreUtils qw/ uniq /;
 
 use MooseX::App::Simple;
 
+use MooseX::XSAccessor;
 
 parameter root_dir => (
     is => 'ro',
@@ -288,9 +289,11 @@ __PACKAGE__->meta->make_immutable;
 
 package Deduper::File;
 
+use Digest::xxHash;
+
 use Moose;
 use MooseX::ClassAttribute;
-use Digest::xxHash;
+use MooseX::XSAccessor;
 
 class_has small_file => (
     isa => 'Int',
