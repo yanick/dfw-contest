@@ -1,4 +1,69 @@
-#!/usr/bin/perl
+#!/usr/bin/env perl
+
+=head1 SYNOPSIS
+
+    dedup.pl <root dir>
+
+
+=head1 DESCRIPTION
+
+This entry is for the 'Most Modern' category. Basically, my goal was to see
+how succinct and clean I could go by leveraging the modern tools at my
+disposal -- while maintaining a decent speed.
+
+The result? 
+
+=over
+
+=item *
+
+I'm using L<MooseX::App::Simple> to take care of all the command-line
+stuff -- dealing with the parameter, the options, and the automatic generation
+of the help (do C<dedup.pl --help> to see what I mean) 
+
+=item * 
+
+To traverse the directories, I'm using L<Path::Iterator::Rule>, which takes
+care of symlinks for me, and reduce the whole exercise to simply calling an 
+iterator.
+
+=item *
+
+For a token nod to efficiency, L<MooseX::XSAccessor> to make accessors a
+little more speedy (although this is defeated by most of my attribute being
+lazy), and L<MooseX::ClassAttribute>, which saves quite a lot of memory by not
+storing the chunk size for every single file object.
+
+
+=back
+
+=head2 The Algorithm
+
+Algorithm-wise, this solution doesn't offer anything ground-breaking. I keep a
+hash of the seen files based on the file size and, if necessary, the first few
+bytes of the files (by default, 1024 bytes). If the beginning of the files
+match, I'll then compare the tail end of the files (to get around files that
+have the same preamble) and, if that also match, finally resort to an xxHash.
+
+Tests on the initial /dedup and on my own system show that the sorting by file
+sizes already weed out a truckload of files. And for the ones remaining, the
+beginning-of-file comparison is very efficient. The efficiency of the tail-end
+snippet is not as proeminent, but since it ends up anyway being done on a very
+small number of files and thus doesn't take a lot of cycles, I've kept it for
+giggles.
+
+=head2 Performance
+
+From what I've seen, it seems that on '/dedup' the
+performances are at least comparable to the baseline numbers. Which is
+not too shabby (or so I think), considering that I'm using chubby modules like
+Moose and MooseX::App, and objects everywhere 
+
+For '/more-dedup', the script unfortunately bursts above 500M of memory, which I
+deemed to be too much. Having more time, I could have turned the
+C<Deduper::File> objects into something more lean. Oh well. :-)
+
+=cut
 
 use 5.10.0;
 
@@ -20,29 +85,10 @@ parameter root_dir => (
     documentation => 'path to dedupe',
 );
 
-option small_file => (
-    isa => 'Int',
-    is => 'ro',
-    trigger => sub {
-        my $self = shift;
-        Deduper::File->small_file( $self->small_file );
-    },
-    documentation => 'minimal size for files to be hashed',
-);
-
-option chunk => (
-    isa => 'Int',
-    is => 'ro',
-    trigger => sub {
-        my $self = shift;
-        Deduper::File->chunk_size( $self->chunk );
-    },
-    documentation => 'size of the chunks to read when comparing',
-);
-
 option hash_size => (
     isa => 'Int',
     is => 'ro',
+    default => '1024',
     trigger => sub {
         my $self = shift;
         Deduper::File->hash_size( $self->hash_size );
@@ -86,38 +132,26 @@ has file_iterator => (
     },
 );
 
-has "finished" => (
+has finished => (
     is => 'rw',
     default => 0,
 );
 
-has "files" => (
+has files => (
     is => 'ro',
     default => sub { {} },
 );
 
 sub all_files {
     my $self = shift;
-    
+
     my @files;
     for my $v ( values %{ $self->files } ) {
-        if ( ref $v eq 'Deduper::File' ) {
-            push @files, $v;
-        }
-        else {
-            push @files, map { @$_ } values %$v;
-        }
+        push @files, ref $v eq 'Deduper::File' ? $v : map { @$_ } values %$v;
     }
 
     return @files;
 }
-
-# to take care of the cases where a, b, c and d are the same,
-# and a,b and c, d  are different sets of hard-links.
-has reported_inodes => (
-    is => 'ro',
-    default => sub { {} },
-);
 
 sub BUILD {
     my $self = shift;
@@ -152,9 +186,6 @@ sub add_file {
         $self->files->{$file->size} = $file;
     }
 
-    if( my $nbr = $file->copies ) {
-        $self->reported_inodes->{$file->inode} = $nbr;
-    }
 }
 
 sub find_orig {
@@ -167,11 +198,11 @@ sub find_orig {
     my @c;
 
     if( ref $candidates eq 'Deduper::File' ) {
-	return if $candidates->hash ne $file->hash;
-	@c = ( $candidates );
+        return if $candidates->hash ne $file->hash;
+        @c = ( $candidates );
     }
     else {
-	 @c = @{ $candidates->{$file->hash} || return };
+        @c = @{ $candidates->{$file->hash} || return };
     }
 
     # first check if any share the same inode
@@ -202,7 +233,7 @@ sub next_file {
     my $self = shift;
 
     return if $self->finished;
-    
+
     while( my $file = $self->file_iterator->() ) {
         return Deduper::File->new( path => $file );
     }
@@ -260,10 +291,7 @@ sub all_dupes {
 sub run {
     my $self = shift;
 
-    # $self->print_dupes;
-    for my $entry ( $self->all_dupes ) {
-        say join "\t", map { $_->path } @$entry;
-    }
+    say join "\t", map { $_->path } @$_ for $self->all_dupes;
 }
 
 sub print_stats {
@@ -279,12 +307,12 @@ sub print_stats {
 
     for my $f ( $self->all_files ) {
         $nbr_files++;
-        $nbr_hash++ if $f->has_hash;
+        $nbr_hash++     if $f->has_hash;
         $nbr_end_hash++ if $f->has_end_hash;
-        $nbr_md5++ if $f->has_md5;
+        $nbr_md5++      if $f->has_md5;
     }
 
-    say join " ", $nbr_files, $nbr_hash, $nbr_end_hash, $nbr_md5;
+    say join " / ", $nbr_files, $nbr_hash, $nbr_end_hash, $nbr_md5;
 }
 
 __PACKAGE__->meta->make_immutable;
@@ -297,30 +325,18 @@ use Moose;
 use MooseX::ClassAttribute;
 use MooseX::XSAccessor;
 
-class_has small_file => (
-    isa => 'Int',
-    is => 'rw',
-    default => 1024,
-);
-
-class_has chunk_size => (
-    isa => 'Int',
-    is => 'rw',
-    default => 1024,
-);
-
 class_has hash_size => (
     isa => 'Int',
     is => 'rw',
     default => 1024,
 );
 
-has "path" => (
+has path => (
     is => 'ro',
     required => 1,
 );
 
-has "inode" => (
+has inode => (
     is => 'ro',
     lazy => 1,
     predicate => 'has_inode',
@@ -330,17 +346,7 @@ has "inode" => (
     },
 );
 
-has copies => (
-    is => 'ro',
-    lazy => 1,
-    predicate => 'has_copies',
-    default => sub {
-        my $self = shift;
-        return( (stat $self->path)[3]-1 );
-    },
-);
-
-has "size" => (
+has size => (
     is => 'ro',
     lazy => 1,
     default => sub {
@@ -412,6 +418,6 @@ __PACKAGE__->meta->make_immutable;
 
 package main;
 
-# modulino time
+# modulino time!
 
 Deduper->new_with_options->run unless caller;
